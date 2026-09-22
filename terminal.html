@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent Terminal</title>
+    <title>Agent Terminal | Portfolio</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -61,8 +61,9 @@
     </div>
 
     <script>
-        // Replace with your Render/Railway API URL
+        // --- CONFIGURATION ---
         const API_URL = "https://terminal-agent-api.onrender.com/api/chat";
+        
         const terminalOutput = document.getElementById('terminal-body');
         const terminalInput = document.getElementById('terminal-input');
 
@@ -81,7 +82,7 @@
             const lower = trimmed.toLowerCase();
 
             if (lower === 'help') {
-                appendTerminalLine('Commands: bio, skills, clear');
+                appendTerminalLine('Commands: bio, clear');
                 appendTerminalLine('Or type any question to ask the AI agent about my portfolio.');
                 terminalOutput.scrollTop = terminalOutput.scrollHeight;
                 return;
@@ -91,7 +92,7 @@
                 return;
             }
             if (lower === 'bio') {
-                appendTerminalLine('Yun | Data Scientist & ML Engineer');
+                appendTerminalLine('Software Engineer & Data Scientist'); // <-- UPDATE THIS
                 terminalOutput.scrollTop = terminalOutput.scrollHeight;
                 return;
             }
@@ -100,20 +101,30 @@
             terminalOutput.scrollTop = terminalOutput.scrollHeight;
 
             try {
+                // Controller to catch 15-second cold-start timeouts
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
+
                 const response = await fetch(API_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: trimmed })
+                    body: JSON.stringify({ message: trimmed }),
+                    signal: controller.signal
                 });
+
+                clearTimeout(timeoutId);
 
                 if (!response.ok) throw new Error('API Error');
 
                 const data = await response.json();
                 terminalOutput.lastChild.remove(); 
                 appendTerminalLine(data.reply, "text-cyan-300");
+                
             } catch (err) {
                 terminalOutput.lastChild.remove();
-                appendTerminalLine("Error: Unable to connect to the portfolio AI agent.", "text-rose-400");
+                appendTerminalLine("Error: Connection timeout.", "text-rose-400");
+                appendTerminalLine("The AI server might be waking up from sleep (this takes ~30 seconds).", "text-amber-400");
+                appendTerminalLine("Please try your question again.", "text-amber-400");
             }
             
             terminalOutput.scrollTop = terminalOutput.scrollHeight;
