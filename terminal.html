@@ -25,6 +25,11 @@
         body { background-color: #0B0F19; color: #E2E8F0; }
         .terminal-scroll::-webkit-scrollbar { width: 5px; }
         .terminal-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        
+        /* Custom range slider styling for a terminal feel */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: #22d3ee; cursor: pointer; margin-top: -4px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-8 relative">
@@ -36,10 +41,12 @@
     </div>
 
     <!-- Terminal UI -->
-    <div class="w-full max-w-5xl bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl shadow-cyan-500/10 overflow-hidden font-mono text-xs sm:text-sm">
-        <div class="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+    <div class="w-full max-w-5xl bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl shadow-cyan-500/10 overflow-hidden font-mono text-xs sm:text-sm flex flex-col">
+        
+        <!-- Header -->
+        <div class="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between z-10">
             <div class="flex items-center space-x-2">
-                <div class="w-3 h-3 rounded-full bg-rose-500/80 cursor-pointer" onclick="executeTerminalCommand('clear')"></div>
+                <div class="w-3 h-3 rounded-full bg-rose-500/80 cursor-pointer" onclick="executeTerminalCommand('clear')" title="Clear Terminal"></div>
                 <div class="w-3 h-3 rounded-full bg-amber-500/80"></div>
                 <div class="w-3 h-3 rounded-full bg-emerald-500/80"></div>
             </div>
@@ -49,12 +56,29 @@
             <div class="text-slate-600 text-[10px]">zsh</div>
         </div>
 
+        <!-- Terminal Output -->
         <div id="terminal-body" class="p-6 h-[500px] overflow-y-auto terminal-scroll bg-slate-900/90 text-slate-300 space-y-3">
             <div class="text-cyan-400">Welcome to the Portfolio AI Agent.</div>
             <div class="text-slate-500">Type any question about my experience, or type <span class="text-emerald-400">'help'</span>.</div>
         </div>
 
-        <form id="terminal-form" class="bg-slate-950 px-4 py-3 border-t border-slate-800 flex items-center gap-2" onsubmit="handleTerminalSubmit(event)">
+        <!-- Visual Settings Bar -->
+        <div class="bg-slate-900 border-t border-slate-800 px-4 py-2 flex flex-wrap gap-4 md:gap-6 text-xs text-slate-400 items-center z-10">
+            <label class="flex items-center gap-2" title="Lower is analytical, higher is creative.">
+                Temp: <span id="temp-val" class="w-6 text-cyan-400 font-bold">0.5</span>
+                <input type="range" id="ui-temp" min="0" max="2" step="0.1" value="0.5" class="w-20 md:w-24">
+            </label>
+            <label class="flex items-center gap-2" title="Number of chunks retrieved by the RAG pipeline.">
+                Chunks: <span id="chunks-val" class="w-4 text-cyan-400 font-bold">5</span>
+                <input type="range" id="ui-chunks" min="1" max="20" step="1" value="5" class="w-20 md:w-24">
+            </label>
+            <label class="flex items-center gap-2 ml-auto cursor-pointer text-amber-400 hover:text-amber-300 transition-colors">
+                <input type="checkbox" id="ui-debug" class="accent-amber-400 w-3 h-3 cursor-pointer"> Debug Context
+            </label>
+        </div>
+
+        <!-- Input Form -->
+        <form id="terminal-form" class="bg-slate-950 px-4 py-3 border-t border-slate-800 flex items-center gap-2 z-10" onsubmit="handleTerminalSubmit(event)">
             <span class="text-emerald-400 font-bold">guest@dev:~$</span>
             <input type="text" id="terminal-input" autocomplete="off" placeholder="Ask a question..." class="w-full bg-transparent text-white focus:outline-none font-mono text-xs sm:text-sm placeholder-slate-600">
         </form>
@@ -62,6 +86,7 @@
 
     <script>
         // --- CONFIGURATION ---
+        // Ensure this matches your active Render URL
         const API_URL = "https://terminal-agent-api.onrender.com/api/chat";
         
         // Agent State Variables
@@ -69,26 +94,47 @@
         let currentTopK = 5;
         let debugMode = false;
         
+        // DOM Elements
         const terminalOutput = document.getElementById('terminal-body');
         const terminalInput = document.getElementById('terminal-input');
+        
+        // Control Bar Listeners
+        document.getElementById('ui-temp').addEventListener('input', (e) => {
+            currentTemperature = parseFloat(e.target.value);
+            document.getElementById('temp-val').textContent = currentTemperature.toFixed(1);
+        });
+        
+        document.getElementById('ui-chunks').addEventListener('input', (e) => {
+            currentTopK = parseInt(e.target.value);
+            document.getElementById('chunks-val').textContent = currentTopK;
+        });
+
+        document.getElementById('ui-debug').addEventListener('change', (e) => {
+            debugMode = e.target.checked;
+        });
 
         function appendTerminalLine(text, className = 'text-slate-300') {
             const line = document.createElement('div');
-            line.className = className;
-            line.textContent = text;
+            line.className = className + ' whitespace-pre-wrap break-words';
+            
+            // Clean up Markdown backticks if the model tries to output a code block
+            let cleanText = text.replace(/^```[a-z]*\n/i, '').replace(/```$/i, '').trim();
+            
+            line.textContent = cleanText;
             terminalOutput.appendChild(line);
         }
 
         async function executeTerminalCommand(cmd) {
             const trimmed = cmd.trim();
-            appendTerminalLine(`guest@dev:~$ ${cmd}`, 'text-emerald-400 font-bold');
+            appendTerminalLine(`guest@dev:~$ ${cmd}`, 'text-emerald-400 font-bold mt-2');
             if (!trimmed) return;
 
             const lower = trimmed.toLowerCase();
 
             // --- COMMAND INTERCEPTORS ---
             if (lower === 'help') {
-                appendTerminalLine('Commands: bio, clear, debug, temp <0-2.0>, chunks <1-20>');
+                appendTerminalLine('Commands: bio, clear');
+                appendTerminalLine('Use the visual controls below to adjust Temperature, Top-K Chunks, and Debug settings.');
                 appendTerminalLine('Or type any question to ask the AI agent about my portfolio.');
                 terminalOutput.scrollTop = terminalOutput.scrollHeight;
                 return;
@@ -99,34 +145,6 @@
             }
             if (lower === 'bio') {
                 appendTerminalLine('Software Engineer & Data Scientist'); 
-                terminalOutput.scrollTop = terminalOutput.scrollHeight;
-                return;
-            }
-            if (lower === 'debug') {
-                debugMode = !debugMode;
-                appendTerminalLine(`[System] RAG Context Diagnostics ${debugMode ? 'ON' : 'OFF'}`, 'text-amber-400 font-bold');
-                terminalOutput.scrollTop = terminalOutput.scrollHeight;
-                return;
-            }
-            if (lower.startsWith('temp ')) {
-                const val = parseFloat(lower.split(' ')[1]);
-                if (!isNaN(val) && val >= 0 && val <= 2) {
-                    currentTemperature = val;
-                    appendTerminalLine(`[System] LLM Temperature updated to ${val}`, 'text-cyan-400');
-                } else {
-                    appendTerminalLine(`[Error] Temperature must be a number between 0.0 and 2.0`, 'text-rose-400');
-                }
-                terminalOutput.scrollTop = terminalOutput.scrollHeight;
-                return;
-            }
-            if (lower.startsWith('chunks ')) {
-                const val = parseInt(lower.split(' ')[1]);
-                if (!isNaN(val) && val >= 1 && val <= 20) {
-                    currentTopK = val;
-                    appendTerminalLine(`[System] Retrieval Top-K updated to ${val}`, 'text-cyan-400');
-                } else {
-                    appendTerminalLine(`[Error] Chunks must be a whole number between 1 and 20`, 'text-rose-400');
-                }
                 terminalOutput.scrollTop = terminalOutput.scrollHeight;
                 return;
             }
@@ -155,19 +173,27 @@
                 if (!response.ok) throw new Error('API Error');
 
                 const data = await response.json();
-                terminalOutput.lastChild.remove(); 
+                terminalOutput.lastChild.remove(); // Remove "Agent is retrieving context..."
                 
-                // If debug mode is active, print the chunk metadata before the reply
+                // 1. If debug mode is checked, print the raw chunks and mathematical scores BEFORE the reply
                 if (debugMode && data.context_used && data.context_used.length > 0) {
-                    appendTerminalLine('--- HYBRID SEARCH CANDIDATES ---', 'text-amber-500 text-xs font-bold mt-2');
+                    appendTerminalLine('--- DIAGNOSTICS: RAW CHUNKS ---', 'text-amber-500 text-xs font-bold mt-2');
                     data.context_used.forEach((chunk, i) => {
                         appendTerminalLine(`[Rank ${i+1} | ${chunk.repo}] RRF: ${chunk.rrf_score} | Cross-Encoder: ${chunk.rerank_score}`, 'text-amber-400 text-[10px]');
                         appendTerminalLine(`↳ "${chunk.snippet}"`, 'text-slate-500 text-[10px] mb-2');
                     });
-                    appendTerminalLine('--------------------------------', 'text-amber-500 text-xs font-bold mb-2');
+                    appendTerminalLine('-------------------------------', 'text-amber-500 text-xs font-bold mb-2');
                 }
 
+                // 2. Print the actual AI Reply
                 appendTerminalLine(data.reply, "text-cyan-300");
+                
+                // 3. Always append a clean list of the source repositories AFTER the reply
+                if (data.context_used && data.context_used.length > 0) {
+                    // Extract unique repository names to avoid listing the same README multiple times
+                    const uniqueRepos = [...new Set(data.context_used.map(c => c.repo))];
+                    appendTerminalLine(`> Sources: ${uniqueRepos.join(', ')}`, 'text-emerald-500/50 text-[10px] mt-2 mb-2 font-bold');
+                }
                 
             } catch (err) {
                 terminalOutput.lastChild.remove();
