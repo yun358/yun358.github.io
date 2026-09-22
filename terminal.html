@@ -25,8 +25,6 @@
         body { background-color: #0B0F19; color: #E2E8F0; }
         .terminal-scroll::-webkit-scrollbar { width: 5px; }
         .terminal-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        
-        /* Custom range slider styling for a terminal feel */
         input[type=range] { -webkit-appearance: none; background: transparent; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 12px; width: 12px; border-radius: 50%; background: #22d3ee; cursor: pointer; margin-top: -4px; }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
@@ -43,7 +41,6 @@
     <!-- Terminal UI -->
     <div class="w-full max-w-5xl bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl shadow-cyan-500/10 overflow-hidden font-mono text-xs sm:text-sm flex flex-col">
         
-        <!-- Header -->
         <div class="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between z-10">
             <div class="flex items-center space-x-2">
                 <div class="w-3 h-3 rounded-full bg-rose-500/80 cursor-pointer" onclick="executeTerminalCommand('clear')" title="Clear Terminal"></div>
@@ -56,13 +53,12 @@
             <div class="text-slate-600 text-[10px]">zsh</div>
         </div>
 
-        <!-- Terminal Output -->
         <div id="terminal-body" class="p-6 h-[500px] overflow-y-auto terminal-scroll bg-slate-900/90 text-slate-300 space-y-3">
-            <div class="text-cyan-400">Welcome to the Portfolio AI Agent.</div>
-            <div class="text-slate-500">Type any question about my experience, or type <span class="text-emerald-400">'help'</span>.</div>
+            <div class="text-cyan-400 font-bold">Welcome to the Portfolio Agentic Terminal.</div>
+            <div class="text-slate-400 text-[11px] mb-2">Equipped with 5 tools: Portfolio RAG, GitHub Metrics, Web Search, System Clock, Profile Stats.</div>
+            <div class="text-slate-500">Type <span class="text-emerald-400">'help'</span> or ask a question directly.</div>
         </div>
 
-        <!-- Visual Settings Bar -->
         <div class="bg-slate-900 border-t border-slate-800 px-4 py-2 flex flex-wrap gap-4 md:gap-6 text-xs text-slate-400 items-center z-10">
             <label class="flex items-center gap-2" title="Lower is analytical, higher is creative.">
                 Temp: <span id="temp-val" class="w-6 text-cyan-400 font-bold">0.5</span>
@@ -77,7 +73,6 @@
             </label>
         </div>
 
-        <!-- Input Form -->
         <form id="terminal-form" class="bg-slate-950 px-4 py-3 border-t border-slate-800 flex items-center gap-2 z-10" onsubmit="handleTerminalSubmit(event)">
             <span class="text-emerald-400 font-bold">guest@dev:~$</span>
             <input type="text" id="terminal-input" autocomplete="off" placeholder="Ask a question..." class="w-full bg-transparent text-white focus:outline-none font-mono text-xs sm:text-sm placeholder-slate-600">
@@ -85,20 +80,15 @@
     </div>
 
     <script>
-        // --- CONFIGURATION ---
-        // Ensure this matches your active Render URL
         const API_URL = "https://terminal-agent-api.onrender.com/api/chat";
         
-        // Agent State Variables
         let currentTemperature = 0.5;
         let currentTopK = 5;
         let debugMode = false;
         
-        // DOM Elements
         const terminalOutput = document.getElementById('terminal-body');
         const terminalInput = document.getElementById('terminal-input');
         
-        // Control Bar Listeners
         document.getElementById('ui-temp').addEventListener('input', (e) => {
             currentTemperature = parseFloat(e.target.value);
             document.getElementById('temp-val').textContent = currentTemperature.toFixed(1);
@@ -116,10 +106,7 @@
         function appendTerminalLine(text, className = 'text-slate-300') {
             const line = document.createElement('div');
             line.className = className + ' whitespace-pre-wrap break-words';
-            
-            // Clean up Markdown backticks if the model tries to output a code block
             let cleanText = text.replace(/^```[a-z]*\n/i, '').replace(/```$/i, '').trim();
-            
             line.textContent = cleanText;
             terminalOutput.appendChild(line);
         }
@@ -131,11 +118,14 @@
 
             const lower = trimmed.toLowerCase();
 
-            // --- COMMAND INTERCEPTORS ---
             if (lower === 'help') {
-                appendTerminalLine('Commands: bio, clear');
-                appendTerminalLine('Use the visual controls below to adjust Temperature, Top-K Chunks, and Debug settings.');
-                appendTerminalLine('Or type any question to ask the AI agent about my portfolio.');
+                appendTerminalLine('System Commands: bio, clear');
+                appendTerminalLine('Agent Capabilities:');
+                appendTerminalLine('  • Portfolio RAG (query projects, architecture, training details)');
+                appendTerminalLine('  • Live GitHub API (inspect repo stats, stars, follower counts)');
+                appendTerminalLine('  • Live Web Search (DuckDuckGo search for current tech/news)');
+                appendTerminalLine('  • System Clock (UTC timestamps)');
+                appendTerminalLine('Use the visual controls below to tweak Temp, Top-K, and Debug.');
                 terminalOutput.scrollTop = terminalOutput.scrollHeight;
                 return;
             }
@@ -149,13 +139,12 @@
                 return;
             }
 
-            // --- AGENT INFERENCE ---
-            appendTerminalLine(`Agent is retrieving context...`, 'text-slate-500 italic');
+            appendTerminalLine(`Agent is thinking...`, 'text-slate-500 italic');
             terminalOutput.scrollTop = terminalOutput.scrollHeight;
 
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 15000);
+                const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout for multi-tool calls
 
                 const response = await fetch(API_URL, {
                     method: "POST",
@@ -173,9 +162,15 @@
                 if (!response.ok) throw new Error('API Error');
 
                 const data = await response.json();
-                terminalOutput.lastChild.remove(); // Remove "Agent is retrieving context..."
+                terminalOutput.lastChild.remove(); 
                 
-                // 1. If debug mode is checked, print the raw chunks and mathematical scores BEFORE the reply
+                // 1. Tool execution trace
+                if (data.tools_executed && data.tools_executed.length > 0) {
+                    const uniqueTools = [...new Set(data.tools_executed)];
+                    appendTerminalLine(`[Agent Invocation] Executed tools: ${uniqueTools.join(', ')}`, 'text-purple-400 font-bold text-[10px] mt-2 mb-2');
+                }
+
+                // 2. Debug Context
                 if (debugMode && data.context_used && data.context_used.length > 0) {
                     appendTerminalLine('--- DIAGNOSTICS: RAW CHUNKS ---', 'text-amber-500 text-xs font-bold mt-2');
                     data.context_used.forEach((chunk, i) => {
@@ -185,12 +180,11 @@
                     appendTerminalLine('-------------------------------', 'text-amber-500 text-xs font-bold mb-2');
                 }
 
-                // 2. Print the actual AI Reply
+                // 3. AI Reply
                 appendTerminalLine(data.reply, "text-cyan-300");
                 
-                // 3. Always append a clean list of the source repositories AFTER the reply
+                // 4. RAG Sources footer
                 if (data.context_used && data.context_used.length > 0) {
-                    // Extract unique repository names to avoid listing the same README multiple times
                     const uniqueRepos = [...new Set(data.context_used.map(c => c.repo))];
                     appendTerminalLine(`> Sources: ${uniqueRepos.join(', ')}`, 'text-emerald-500/50 text-[10px] mt-2 mb-2 font-bold');
                 }
@@ -198,8 +192,7 @@
             } catch (err) {
                 terminalOutput.lastChild.remove();
                 appendTerminalLine("Error: Connection timeout.", "text-rose-400");
-                appendTerminalLine("The AI server might be waking up from sleep (this takes ~30 seconds).", "text-amber-400");
-                appendTerminalLine("Please try your question again.", "text-amber-400");
+                appendTerminalLine("The AI server might be waking up from sleep or taking too long to execute tools.", "text-amber-400");
             }
             
             terminalOutput.scrollTop = terminalOutput.scrollHeight;
