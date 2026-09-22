@@ -360,8 +360,17 @@
             try {
                 const response = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}/repos?sort=updated&per_page=6`);
                 if (!response.ok) throw new Error('User not found');
+
+                let repos = await response.json();
                 
-                const repos = await response.json();
+                // Filters out both username.github.io and the profile README repo
+                repos = repos
+                    .filter(repo => {
+                        const name = repo.name.toLowerCase();
+                        const user = GITHUB_USERNAME.toLowerCase();
+                        return name !== `${user}.github.io` && name !== user;
+                    })
+                    .slice(0, 6);
                 
                 if (repos.length === 0) {
                     repoContainer.innerHTML = '<div class="glass-card rounded-3xl p-6 col-span-full text-center text-slate-400 font-mono">No public repositories found. Ensure your repos are set to Public.</div>';
