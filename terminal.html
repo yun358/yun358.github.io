@@ -64,6 +64,11 @@
         // --- CONFIGURATION ---
         const API_URL = "https://terminal-agent-api.onrender.com/api/chat";
         
+        // Agent State Variables
+        let currentTemperature = 0.5;
+        let currentTopK = 5;
+        let debugMode = false;
+        
         const terminalOutput = document.getElementById('terminal-body');
         const terminalInput = document.getElementById('terminal-input');
 
@@ -81,8 +86,9 @@
 
             const lower = trimmed.toLowerCase();
 
+            // --- COMMAND INTERCEPTORS ---
             if (lower === 'help') {
-                appendTerminalLine('Commands: bio, clear');
+                appendTerminalLine('Commands: bio, clear, debug, temp <0-2.0>, chunks <1-20>');
                 appendTerminalLine('Or type any question to ask the AI agent about my portfolio.');
                 terminalOutput.scrollTop = terminalOutput.scrollHeight;
                 return;
@@ -92,23 +98,55 @@
                 return;
             }
             if (lower === 'bio') {
-                appendTerminalLine('Software Engineer & Data Scientist'); // <-- UPDATE THIS
+                appendTerminalLine('Software Engineer & Data Scientist'); 
+                terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                return;
+            }
+            if (lower === 'debug') {
+                debugMode = !debugMode;
+                appendTerminalLine(`[System] RAG Context Diagnostics ${debugMode ? 'ON' : 'OFF'}`, 'text-amber-400 font-bold');
+                terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                return;
+            }
+            if (lower.startsWith('temp ')) {
+                const val = parseFloat(lower.split(' ')[1]);
+                if (!isNaN(val) && val >= 0 && val <= 2) {
+                    currentTemperature = val;
+                    appendTerminalLine(`[System] LLM Temperature updated to ${val}`, 'text-cyan-400');
+                } else {
+                    appendTerminalLine(`[Error] Temperature must be a number between 0.0 and 2.0`, 'text-rose-400');
+                }
+                terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                return;
+            }
+            if (lower.startsWith('chunks ')) {
+                const val = parseInt(lower.split(' ')[1]);
+                if (!isNaN(val) && val >= 1 && val <= 20) {
+                    currentTopK = val;
+                    appendTerminalLine(`[System] Retrieval Top-K updated to ${val}`, 'text-cyan-400');
+                } else {
+                    appendTerminalLine(`[Error] Chunks must be a whole number between 1 and 20`, 'text-rose-400');
+                }
                 terminalOutput.scrollTop = terminalOutput.scrollHeight;
                 return;
             }
 
+            // --- AGENT INFERENCE ---
             appendTerminalLine(`Agent is retrieving context...`, 'text-slate-500 italic');
             terminalOutput.scrollTop = terminalOutput.scrollHeight;
 
             try {
-                // Controller to catch 15-second cold-start timeouts
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 15000);
 
                 const response = await fetch(API_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: trimmed }),
+                    body: JSON.stringify({ 
+                        message: trimmed,
+                        temperature: currentTemperature,
+                        top_k: currentTopK
+                    }),
                     signal: controller.signal
                 });
 
@@ -118,6 +156,17 @@
 
                 const data = await response.json();
                 terminalOutput.lastChild.remove(); 
+                
+                // If debug mode is active, print the chunk metadata before the reply
+                if (debugMode && data.context_used && data.context_used.length > 0) {
+                    appendTerminalLine('--- HYBRID SEARCH CANDIDATES ---', 'text-amber-500 text-xs font-bold mt-2');
+                    data.context_used.forEach((chunk, i) => {
+                        appendTerminalLine(`[Rank ${i+1} | ${chunk.repo}] RRF: ${chunk.rrf_score} | Cross-Encoder: ${chunk.rerank_score}`, 'text-amber-400 text-[10px]');
+                        appendTerminalLine(`↳ "${chunk.snippet}"`, 'text-slate-500 text-[10px] mb-2');
+                    });
+                    appendTerminalLine('--------------------------------', 'text-amber-500 text-xs font-bold mb-2');
+                }
+
                 appendTerminalLine(data.reply, "text-cyan-300");
                 
             } catch (err) {
